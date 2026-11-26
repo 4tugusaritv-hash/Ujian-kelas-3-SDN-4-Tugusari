@@ -25,6 +25,7 @@
       -webkit-tap-highlight-color: transparent;
       overflow-x: hidden;
     }
+    input, textarea, .select-text { -webkit-user-select: text; user-select: text; }
     .font-judul { font-family: 'Fredoka', sans-serif; }
 
     /* ---- LATAR: matahari, awan, bukit ---- */
@@ -60,7 +61,7 @@
 
     .kartu-login { box-shadow: 0 6px 0 rgba(2,32,80,.12), 0 24px 50px -18px rgba(2,32,80,.35); }
     .field { width:100%; min-height:3.25rem; padding:.75rem 1rem; border:2px solid #cbd5e1; border-radius:1rem;
-      font-size:16px; /* cegah zoom otomatis di iPad/iPhone */ background:#fff; }
+      font-size:16px; background:#fff; }
     .field:focus { outline:none; border-color:var(--aqua); box-shadow:0 0 0 4px rgba(0,214,216,.25); }
     .btn-mulai { min-height:3.5rem; background:var(--sun); color:var(--navy); border:3px solid var(--navy);
       box-shadow:0 5px 0 var(--navy); transition:transform .08s, box-shadow .08s; }
@@ -147,13 +148,13 @@
             <li class="langkah"><i class="fa-solid fa-pen-to-square"></i>
               <p class="text-sm sm:text-base font-bold text-[#022050] pt-1.5">Tulis nama lengkapmu</p></li>
             <li class="langkah"><i class="fa-solid fa-key"></i>
-              <p class="text-sm sm:text-base font-bold text-[#022050] pt-1.5">Masukkan token dari Ibu Guru</p></li>
+              <p class="text-sm sm:text-base font-bold text-[#022050] pt-1.5">Masukkan token dari Bapak/Ibu Guru</p></li>
             <li class="langkah"><i class="fa-solid fa-lightbulb"></i>
               <p class="text-sm sm:text-base font-bold text-[#022050] pt-1.5">Baca soal pelan-pelan, lalu pilih jawabanmu</p></li>
           </ul>
 
           <p class="mt-6 text-xs sm:text-sm font-bold text-slate-600">
-            Wali Kelas: <span class="text-[#022050]">Ibu Juliyanti Hartini, S.Pd.SD.</span>
+            Wali Kelas 3: <span class="text-[#022050]">Ibu Juliyanti Hartini, S.Pd.SD.</span>
           </p>
         </section>
 
@@ -201,7 +202,7 @@
                   <label for="inputTokenUjian" class="block text-sm font-extrabold text-[#022050] mb-1.5">
                     <i class="fa-solid fa-key text-[#0B7C86] mr-1"></i> Token Ujian
                   </label>
-                  <input type="text" id="inputTokenUjian" required placeholder="Contoh: MTK3"
+                  <input type="text" id="inputTokenUjian" required placeholder="Contoh: MTK3 / PJOK3"
                     class="field select-text uppercase font-mono font-extrabold text-[#022050] tracking-wider" />
                 </div>
               </div>
@@ -291,7 +292,7 @@
         <div class="bg-gradient-to-br from-cyan-50 to-sky-50 rounded-2xl p-4 border-2 border-cyan-200 space-y-1.5 text-slate-700">
           <p class="text-sm font-extrabold text-[#022050]"><i class="fa-solid fa-star text-[#ffd300] mr-1"></i> Kerja Bagus, Nak!</p>
           <p class="text-xs leading-relaxed">
-            Seluruh jawabanmu sudah tersimpan dengan aman dan akan diperiksa oleh <b>Ibu Juliyanti Hartini</b>. Silakan lapor kepada Ibu Guru bahwa kamu sudah selesai.
+            Seluruh jawabanmu sudah tersimpan dengan aman dan akan diperiksa oleh <b id="hasilGuruPemeriksa">Bapak/Ibu Guru</b>. Silakan lapor kepada Bapak/Ibu Guru bahwa kamu sudah selesai.
           </p>
         </div>
         <button type="button" onclick="kembaliKeMenuAwal()"
@@ -318,6 +319,43 @@
     }
     let state = stateAwal();
     let antiCurangAktif = false;
+
+    function getDraftKey() {
+      return state.paket && state.nama ? `UJIAN_KLS3_${state.paket}_${state.nama}` : "";
+    }
+
+    function simpanDraftLokal() {
+      const key = getDraftKey();
+      if (!key) return;
+      try {
+        sessionStorage.setItem(key, JSON.stringify({
+          jawaban: state.jawaban,
+          pelanggaran: state.pelanggaran,
+          logCurang: state.logCurang
+        }));
+      } catch (e) {}
+    }
+
+    function muatDraftLokal() {
+      const key = getDraftKey();
+      if (!key) return;
+      try {
+        const raw = sessionStorage.getItem(key);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") {
+          state.jawaban = parsed.jawaban || {};
+          state.pelanggaran = Number(parsed.pelanggaran) || 0;
+          state.logCurang = Array.isArray(parsed.logCurang) ? parsed.logCurang : [];
+        }
+      } catch (e) {}
+    }
+
+    function hapusDraftLokal() {
+      const key = getDraftKey();
+      if (!key) return;
+      try { sessionStorage.removeItem(key); } catch (e) {}
+    }
 
     function tampilStatusBar(tampil) {
       const el = document.getElementById("examStatusBar");
@@ -365,6 +403,7 @@
           nama, paket: res.paket, mapel: res.mapel, guruPengampu: res.guruPengampu,
           durasi: res.durasi || 75, soal: res.soal
         });
+        muatDraftLokal();
 
         document.getElementById("headerSub").textContent = `${state.mapel} • ${state.nama}`;
         document.getElementById("labelMapelGuru").textContent = `${state.mapel} • ${state.guruPengampu}`;
@@ -418,8 +457,16 @@
           waktu: new Date().toLocaleTimeString("id-ID"),
           alasan: "Berpindah tab atau membuka aplikasi lain di luar browser ujian"
         });
+        simpanDraftLokal();
       });
     }
+
+    window.addEventListener("beforeunload", (e) => {
+      if (state.paket && !state.selesai) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    });
 
     function renderSoal() {
       const q = state.soal[state.idx];
@@ -439,12 +486,17 @@
         boxIsian.classList.remove("hidden");
         const inp = document.getElementById("inputJawabanIsian");
         inp.value = state.jawaban[q.id] || "";
-        inp.oninput = () => { state.jawaban[q.id] = inp.value; renderGridNomor(); };
+        inp.oninput = () => {
+          state.jawaban[q.id] = inp.value;
+          simpanDraftLokal();
+          renderGridNomor();
+        };
       } else {
         boxIsian.classList.add("hidden");
         boxPG.classList.remove("hidden");
         const jwb = state.jawaban[q.id] || "";
-        boxPG.innerHTML = ["A", "B", "C", "D"].map(h => {
+        const hurufOpsi = ["A", "B", "C", "D"].filter(h => h !== "D" || String(q.opsi.D || "").trim() !== "");
+        boxPG.innerHTML = hurufOpsi.map(h => {
           const aktif = jwb === h;
           return `
             <button type="button" onclick="pilihOpsiPG('${q.id}', '${h}')"
@@ -466,7 +518,11 @@
       if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise();
     }
 
-    function pilihOpsiPG(qId, huruf) { state.jawaban[qId] = huruf; renderSoal(); }
+    function pilihOpsiPG(qId, huruf) {
+      state.jawaban[qId] = huruf;
+      simpanDraftLokal();
+      renderSoal();
+    }
 
     function pindahSoal(delta) {
       const next = state.idx + delta;
@@ -479,7 +535,7 @@
         let cls = "bg-slate-100 text-slate-700 border-slate-200";
         if (terisi) cls = "bg-emerald-500 text-white border-emerald-600";
         if (i === state.idx) cls += " ring-2 ring-[#022050] ring-offset-1";
-        return `<button type="button" onclick="state.idx=${i};renderSoal()" class="h-10 rounded-xl border text-xs font-extrabold ${cls}">
+        return `<button type="button" onclick="state.idx=${i};renderSoal();window.scrollTo(0,0)" class="h-10 rounded-xl border text-xs font-extrabold ${cls}">
           ${q.tipe === "ISIAN" ? "I-" + q.noLabel : q.noLabel}</button>`;
       }).join("");
     }
@@ -502,15 +558,20 @@
       btnFinish.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Mengirim...';
 
       try {
-        await fetchGasWithRetry({
+        const res = await fetchGasWithRetry({
           action: "submitUjian", nama: state.nama, kelas: "3", paket: state.paket, mapel: state.mapel,
           guruPengampu: state.guruPengampu, jawaban: state.jawaban,
           jmlPelanggaran: state.pelanggaran, logCurang: state.logCurang
         });
+        if (res.status !== "success") {
+          throw new Error(res.message || "Gagal menyimpan jawaban");
+        }
+        hapusDraftLokal();
         document.getElementById("sectionUjian").classList.add("hidden");
         tampilStatusBar(false);
         document.getElementById("sectionHasil").classList.remove("hidden");
         document.getElementById("hasilNamaMapel").textContent = `${state.nama} • Kelas 3 • ${state.mapel}`;
+        document.getElementById("hasilGuruPemeriksa").textContent = state.guruPengampu || "Bapak/Ibu Guru";
         window.scrollTo(0, 0);
       } catch (err) {
         state.selesai = false;
@@ -522,6 +583,7 @@
 
     function kembaliKeMenuAwal() {
       if (state.timerInterval) clearInterval(state.timerInterval);
+      hapusDraftLokal();
       state = stateAwal();
       document.getElementById("formMulaiUjian").reset();
       const btn = document.getElementById("btnMulai");
@@ -535,6 +597,7 @@
       tampilStatusBar(false);
       document.getElementById("sectionLogin").classList.remove("hidden");
       document.getElementById("btnPortalGuru").classList.remove("hidden");
+      window.scrollTo(0, 0);
     }
   </script>
 </body>
